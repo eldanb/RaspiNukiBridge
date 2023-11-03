@@ -281,6 +281,10 @@ class Nuki:
         return time.time() - self._last_ibeacon < 60 
 
     @property
+    def last_ibeacon(self):
+        return self._last_ibeacon
+
+    @property
     def device_type(self):
         return self._device_type
     

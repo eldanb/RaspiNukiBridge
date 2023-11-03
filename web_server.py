@@ -2,6 +2,9 @@ import datetime
 import hashlib
 import json
 import uuid
+import asyncio
+import time
+import sys
 
 from aiohttp import web, ClientSession
 
@@ -73,7 +76,18 @@ class WebServer:
     async def _startup(self, _app):
         self._start_datetime = datetime.datetime.now()
         await self.nuki_manager.start_scanning()
+        asyncio.get_event_loop().create_task(self._watchdog(60, 300))
 
+    async def _watchdog(self, scan_period, dead_time):
+        print(f"Starting watchdog with scan period {scan_period} and dead-time {dead_time}") 
+        while True:
+            await asyncio.sleep(scan_period)
+            print("Watchdog up")
+            dead_nukis = [nuki for nuki in self.nuki_manager if nuki.last_ibeacon and time.time()-nuki.last_ibeacon > dead_time]
+            if len(dead_nukis):
+                print("Found dead nukis. Quitting.")
+                sys.exit(-100)
+	
     async def callback_add(self, request):
         if not self._check_token(request):
             raise web.HTTPForbidden()
