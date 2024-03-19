@@ -11,6 +11,12 @@ from aiohttp import web, ClientSession
 from utils import logger
 from nuki import DeviceType, BridgeType
 
+import nacl.secret
+import nacl.utils
+import binascii
+import hashlib
+from nacl.bindings import crypto_secretbox_open
+
 
 class WebServer:
 
@@ -151,6 +157,13 @@ class WebServer:
             token_valid = hash_256 == request.query["hash"]
         elif "token" in request.query:
             token_valid = self._token == request.query["token"]
+        elif "ctoken" in request.query:
+            try:
+               token_valid = True
+               validate_nukibridge_encrypted_token(request.query["ctoken"], request.query["nonce"], self._token)
+            except Exception as e:
+               token_valid = False
+               logger.error('Failed validating encrypted token: ' + str(e)) 
         if not token_valid:
             logger.error('Invalid token. Please change token.')
         return token_valid
@@ -185,3 +198,22 @@ class WebServer:
         await n.unlock()
         res = json.dumps({"success": True, "batteryCritical": n.is_battery_critical})
         return web.Response(text=res)
+
+def validate_nukibridge_encrypted_token(cipher_text_hex, nonce_hex, token):
+
+  # Derive the key from the token using SHA256
+  key = hashlib.sha256(token.encode()).digest()
+
+  # Make sure the key length is correct for XSalsa20Poly1305
+  if len(key) != 32:
+      raise ValueError("Derived key must be 32 bytes long")
+
+  # Convert hex-encoded values to bytes
+  cipher_text = binascii.unhexlify(cipher_text_hex)
+  nonce = binascii.unhexlify(nonce_hex)
+
+  # Create the XSalsa20Poly1305 object with the derived key
+  box = nacl.secret.SecretBox(key)
+
+  # Decrypt the message
+  decrypted = box.decrypt(cipher_text, nonce)
